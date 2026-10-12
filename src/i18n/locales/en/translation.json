@@ -172,6 +172,10 @@
             "name": "Transcribe Shortcut",
             "description": "The keyboard shortcut to record and transcribe your voice."
           },
+          "paste_last_transcript": {
+            "name": "Paste Last Transcript Shortcut",
+            "description": "The keyboard shortcut to paste your most recent transcription at the cursor."
+          },
           "cancel": {
             "name": "Cancel Shortcut",
             "description": "The keyboard shortcut to cancel the current recording."

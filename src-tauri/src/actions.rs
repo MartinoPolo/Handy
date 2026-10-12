@@ -9,7 +9,7 @@ use crate::managers::transcription::StreamWorkKind;
 use crate::managers::transcription::TranscriptionManager;
 use crate::settings::{get_settings, AppSettings, OverlayStyle, APPLE_INTELLIGENCE_PROVIDER_ID};
 use crate::shortcut;
-use crate::tray::{set_tray_state, TrayIconState};
+use crate::tray::{last_transcript_text, set_tray_state, TrayIconState};
 use crate::utils::{
     self, show_processing_overlay, show_recording_overlay, show_transcribing_overlay,
 };
@@ -857,6 +857,50 @@ impl ShortcutAction for TestAction {
     }
 }
 
+// Paste Last Transcript Action
+struct PasteLastTranscriptAction;
+
+impl ShortcutAction for PasteLastTranscriptAction {
+    fn start(&self, app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
+        let history_manager = app.state::<Arc<HistoryManager>>();
+        let entry = match history_manager.get_latest_completed_entry() {
+            Ok(Some(entry)) => entry,
+            Ok(None) => {
+                warn!("No completed transcription history entries available to paste.");
+                return;
+            }
+            Err(err) => {
+                error!(
+                    "Failed to fetch last completed transcription entry: {}",
+                    err
+                );
+                return;
+            }
+        };
+
+        let text = last_transcript_text(&entry);
+        if text.trim().is_empty() {
+            warn!("Last completed transcription is empty; skipping paste.");
+            return;
+        }
+
+        // `paste` drives Enigo, which must be used from the main thread.
+        let text = text.to_string();
+        let app_clone = app.clone();
+        app.run_on_main_thread(move || match utils::paste(text, app_clone.clone()) {
+            Ok(()) => debug!("Pasted last transcript via shortcut."),
+            Err(e) => error!("Failed to paste last transcript: {}", e),
+        })
+        .unwrap_or_else(|e| {
+            error!("Failed to run paste on main thread: {:?}", e);
+        });
+    }
+
+    fn stop(&self, _app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
+        // Nothing to do on stop; pasting is a one-shot action.
+    }
+}
+
 // Static Action Map
 pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::new(|| {
     let mut map = HashMap::new();
@@ -873,6 +917,10 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
     map.insert(
         "cancel".to_string(),
         Arc::new(CancelAction) as Arc<dyn ShortcutAction>,
+    );
+    map.insert(
+        "paste_last_transcript".to_string(),
+        Arc::new(PasteLastTranscriptAction) as Arc<dyn ShortcutAction>,
     );
     map.insert(
         "test".to_string(),
